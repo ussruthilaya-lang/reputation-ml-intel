@@ -1,16 +1,19 @@
 -- mentions_raw
 CREATE TABLE IF NOT EXISTS mentions_raw (
-    raw_id        SERIAL PRIMARY KEY,
-    source        TEXT NOT NULL,
-    source_id     TEXT NOT NULL,
-    brand         TEXT NOT NULL,
-    created_utc   TIMESTAMP NOT NULL,
-    author        TEXT,
-    title         TEXT,
-    body          TEXT,
-    url           TEXT,
-    subreddit     TEXT,
-    collected_at  TIMESTAMP DEFAULT NOW(),
+    raw_id          SERIAL PRIMARY KEY,
+    source          TEXT NOT NULL,
+    source_id       TEXT NOT NULL,
+    brand           TEXT NOT NULL,
+    created_utc     TIMESTAMP NOT NULL,
+    author          TEXT,
+    title           TEXT,
+    body            TEXT,
+    url             TEXT,
+    subreddit       TEXT,
+    source_context  TEXT,
+    rating          INT,
+    version         TEXT,
+    collected_at    TIMESTAMP DEFAULT NOW(),
     UNIQUE (source, source_id)
 );
 
@@ -51,3 +54,17 @@ CREATE TABLE IF NOT EXISTS sentiment_timeseries (
     anomaly_reason      TEXT,
     PRIMARY KEY (brand, date)
 );
+
+-- Adding new columns to mentions_raw
+ALTER TABLE mentions_raw
+ADD COLUMN IF NOT EXISTS rating INT;
+
+ALTER TABLE mentions_raw
+ADD COLUMN IF NOT EXISTS version TEXT;
+
+ALTER TABLE mentions_raw
+ADD COLUMN IF NOT EXISTS source_context TEXT;
+
+-- Index on processed_at in mentions_ml
+CREATE INDEX IF NOT EXISTS idx_mentions_ml_processed
+ON mentions_ml(processed_at);

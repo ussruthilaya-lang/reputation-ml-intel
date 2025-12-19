@@ -46,7 +46,7 @@ GOOGLE_PLAY_APPS = {
 }
 
 # ------------------------------------------------
-# UI
+# UI HEADER
 # ------------------------------------------------
 st.title("🔍 Reputation & Sentiment Intelligence Platform")
 
@@ -60,7 +60,7 @@ st.caption(f"Source: Google Play reviews · App ID: `{app_id}`")
 # ------------------------------------------------
 if st.button("Fetch latest Google Play reviews"):
     with st.spinner("Fetching reviews from Google Play..."):
-        rows = fetch_google_play_reviews(
+        rows, _ = fetch_google_play_reviews(
             app_id=app_id,
             brand=brand,
             limit=30
@@ -76,7 +76,7 @@ if st.button("Fetch latest Google Play reviews"):
         st.success(f"Inserted {len(rows)} new reviews.")
 
 # ------------------------------------------------
-# DISPLAY DATA
+# RECENT REVIEWS (RAW)
 # ------------------------------------------------
 st.subheader("Recent Reviews")
 
@@ -99,3 +99,56 @@ df = pd.read_sql(
 )
 
 st.dataframe(df, use_container_width=True)
+
+# ------------------------------------------------
+# SENTIMENT DISTRIBUTION
+# ------------------------------------------------
+st.subheader("Sentiment Distribution")
+
+sent_df = pd.read_sql(
+    """
+    SELECT
+        m.sentiment_label,
+        COUNT(*) AS count
+    FROM mentions_ml m
+    JOIN mentions_raw r
+        ON r.raw_id = m.raw_id
+    WHERE r.brand = %s
+    GROUP BY m.sentiment_label
+    """,
+    conn,
+    params=(brand.lower(),),
+)
+
+if not sent_df.empty:
+    st.bar_chart(sent_df.set_index("sentiment_label"))
+else:
+    st.caption("No sentiment scores available yet.")
+
+# ------------------------------------------------
+# MOST NEGATIVE REVIEWS
+# ------------------------------------------------
+st.subheader("Most Negative Reviews")
+
+neg_df = pd.read_sql(
+    """
+    SELECT
+        r.created_utc,
+        r.body,
+        m.sentiment_score,
+        m.toxicity_score
+    FROM mentions_raw r
+    JOIN mentions_ml m
+        ON r.raw_id = m.raw_id
+    WHERE r.brand = %s
+    ORDER BY m.sentiment_score ASC
+    LIMIT 5
+    """,
+    conn,
+    params=(brand.lower(),),
+)
+
+if not neg_df.empty:
+    st.dataframe(neg_df, use_container_width=True)
+else:
+    st.caption("No negative reviews detected yet.")
