@@ -1,168 +1,186 @@
-Reputation & Sentiment Intelligence Platform
+# Reputation & Sentiment Intelligence Platform
 
-An ML-first reputation intelligence system that ingests live customer feedback and public signals to track sentiment, detect emerging issues, cluster themes, and surface anomaly-driven risk — delivered through a clean, SaaS-style Streamlit interface.
+An **ML-first reputation intelligence system** that ingests live customer reviews, enriches them with sentiment and toxicity signals, clusters feedback into semantic themes, and surfaces insights through a clean Streamlit UI.
 
-The system is designed with real-world ML pipelines in mind: source-agnostic ingestion, idempotent writes, historical backfills, graceful fallbacks, and scalability beyond a single data source.
-#---------------------------------------------------------------------------------------------#
-Day 0 Snapshot — Setup & Infra
-✔️ What was completed
+Built to reflect **real-world ML system design** — not a demo dashboard.
 
-Repository created with production-grade, ML-first folder structure.
+---
 
-Virtual environment initialized; core dependencies installed.
+## What This System Does
 
-Supabase Postgres database provisioned.
+* Ingests live Google Play Store reviews (with safe historical backfill)
+* Stores raw data as a single source of truth
+* Runs batch ML pipelines for:
 
-schema.sql applied successfully.
+  * sentiment analysis
+  * toxicity & escalation detection
+  * semantic embeddings
+  * review clustering
+* Surfaces insights in a lightweight Streamlit UI
+* Keeps ingestion, ML, and UI **strictly decoupled**
 
-Secure .env configuration integrated and ignored via .gitignore.
+No mock data. No UI-triggered ML. No shortcuts.
 
-Streamlit application skeleton built with verified DB connectivity.
+---
 
-Successful end-to-end local execution.
+## Why This Architecture
 
-🧠 Key Decisions Made
+Most sentiment dashboards collapse ingestion, ML, and UI into one layer.
+This project **explicitly avoids that**.
 
-Chose Supabase over Railway for long-term free-tier stability and predictable limits.
+Key principles:
 
-Designed database with raw vs ML output separation (mentions_raw vs mentions_ml) to support scalable pipelines.
+* **Raw vs derived data separation**
+* **Idempotent, re-runnable pipelines**
+* **Batch ML, not UI side-effects**
+* **Explainable ML choices over LLM black boxes**
 
-Built UI early to validate system wiring and reduce downstream integration risk.
+This makes the system:
 
-⚠️ Obstacles Faced
+* debuggable
+* extensible
+* interview-defensible
 
-PowerShell mkdir incompatibility → resolved by creating folders individually.
+---
 
-Initial Postgres driver and environment configuration issues → resolved with Supabase-compatible setup.
-#---------------------------------------------------------------------------------------------#
-Day 1 Snapshot — Data Ingestion Backbone (Reviews-First Pivot)
-✔️ What was completed
+## Tech Stack
 
-Implemented source-agnostic ingestion pipeline with idempotent writes.
+* **Language:** Python 3
+* **Database:** Supabase (Postgres)
+* **ML:**
 
-Added Google Play Store reviews as the primary live data source.
+  * Sentiment: `cardiffnlp/twitter-roberta-base-sentiment`
+  * Baseline sentiment: VADER
+  * Toxicity: rule-based escalation logic
+  * Embeddings: Sentence-Transformers (`MiniLM`)
+  * Clustering: KMeans (Windows-safe baseline)
+* **UI:** Streamlit
+* **Infra:** Local venv + Supabase free tier
+* **Data Source:** Google Play Store reviews
 
-Extended schema to support review-specific metadata:
+---
 
-rating
+## Project Structure
 
-version
+```
+reputation-ml-intel/
+│
+├── analytics/              # ML logic (sentiment, toxicity)
+├── ingestion/              # Data ingestion
+│   └── reviews/
+│       └── google_play.py
+│
+├── scripts/                # Batch ML pipelines
+│   ├── run_sentiment_pipeline.py
+│   ├── run_embedding_pipeline.py
+│   └── run_clustering_pipeline.py
+│
+├── app/
+│   └── streamlit_app.py    # UI (read-only, no ML triggers)
+│
+├── db/
+│   └── schema.sql
+│
+├── .env                    # DB credentials (ignored)
+└── README.md
+```
 
-source_context
+---
 
-Built a safe, paginated historical backfill for reviews.
+## Database Design (High Level)
 
-Completed one-time backfill (~180 reviews per brand) to establish a meaningful historical baseline.
+* **`mentions_raw`**
+  Raw reviews only. Source of truth.
 
-Verified ingestion stability, deduplication, and timeline continuity.
+* **`mentions_ml`**
+  Scalar ML outputs (sentiment, toxicity, escalation).
 
-Streamlit UI updated to display live and cached review data cleanly.
+* **`review_embeddings`**
+  Dense semantic vectors (decoupled for re-embedding).
 
-🧠 Key Decisions Made (Important)
+* **`review_clusters`**
+  Cluster assignments per review.
 
-Pivoted away from Reddit-first ingestion due to ecosystem instability and API unreliability.
+This separation is intentional and future-proof.
 
-Adopted a reviews-first strategy (Google Play) as the primary sentiment signal:
+---
 
-Higher volume
+## ML Pipelines (How It Works)
 
-Stronger emotional signal
+### Sentiment & Toxicity
 
-Closer to real enterprise feedback (support tickets, NPS, CSAT)
+* Transformer-based sentiment scoring
+* Rating + text fusion
+* Rule-based toxicity and escalation flags
+* Written only via batch scripts
 
-Designed ingestion in two modes:
+### Embeddings
 
-Live fetch (small, safe batches for freshness)
+* Light text normalization
+* Short/empty reviews skipped
+* Stored independently for reuse
 
-One-time historical backfill (paginated, controlled, idempotent)
+### Clustering
 
-Ensured ingestion is not tied to UI interactions, preventing accidental overuse or upstream abuse.
+* Brand-scoped clustering
+* KMeans used as MVP baseline (Windows-safe)
+* Architecture supports HDBSCAN upgrade later (Docker/WSL)
 
-Explicitly avoided over-ingestion to stay within API and DB limits while preserving signal quality.
+---
 
-⚠️ Obstacles Faced
+## How to Run the Project
 
-Reddit ecosystem instability (Pushshift, snscrape, API gating).
+### 1. Ingest Reviews
 
-Initial ingestion logic assumed Reddit-shaped fields (e.g., subreddit) → refactored loader to be source-agnostic.
+```bash
+python ingestion/reviews/google_play.py
+```
 
-Python import path issues for standalone scripts → resolved via explicit project-root path handling.
+### 2. Run Sentiment + Toxicity
 
-📌 Data Policy (Intentional Design)
+```bash
+python scripts/run_sentiment_pipeline.py
+```
 
-Ingestion batches are deliberately capped (e.g., 30 reviews per fetch).
+### 3. Generate Embeddings
 
-Database storage is unbounded but controlled by policy, not accidents.
+```bash
+python scripts/run_embedding_pipeline.py
+```
 
-Historical window established via backfill; future growth handled incrementally.
+### 4. Cluster Reviews
 
-Retention (3–6 months) planned as a separate cleanup policy, not mixed into ingestion logic.
+```bash
+python scripts/run_clustering_pipeline.py
+```
 
-Current System State (End of Day 1)
+All scripts are **idempotent** — safe to re-run at any time.
 
-✅ Stable, live data ingestion from Google Play reviews.
+---
 
-✅ Historical baseline available for trend and anomaly analysis.
+## Current Status (MVP Complete)
 
-✅ Source-agnostic ingestion layer ready for App Store, Yelp, and News APIs.
+* ✅ Live review ingestion
+* ✅ Sentiment & toxicity enrichment
+* ✅ Semantic embeddings
+* ✅ Review clustering into themes
+* ✅ Stable Streamlit UI with graceful fallbacks
 
-✅ Clean, reliable Postgres-backed data store.
+This is a **working ML system**, not a prototype.
 
-✅ Streamlit UI accurately reflecting system state with graceful fallbacks.
+---
 
-This foundation enables meaningful ML work without being blocked by upstream data volatility.
-#---------------------------------------------------------------------------------------------#
-Day 2 Snapshot — Sentiment & Toxicity ML Pipeline
-✔️ What was completed
+## Planned Extensions
 
-Implemented a modular sentiment analysis pipeline with clear separation between baseline and ML-based scoring.
+* Cluster-level summaries (LLM-assisted)
+* Theme evolution over time
+* Early-warning signals for emerging issues
+* Dockerized pipelines (Linux / HDBSCAN upgrade)
+* Additional data sources (App Store, Yelp, News)
 
-Integrated a pre-trained RoBERTa transformer model for final sentiment inference, optimized for short-form review text.
+---
 
-Added a VADER-based baseline sentiment scorer for transparency and interpretability.
+## Final Note
 
-Designed and implemented rule-based toxicity and escalation scoring to flag high-risk customer feedback.
-
-Built an idempotent batch ML processor to score all unprocessed reviews and write results to `mentions_ml`.
-
-Successfully processed 700+ historical reviews in a single pipeline run.
-
-Extended the Streamlit UI to visualize:
-- Sentiment distribution per brand
-- Most negative and potentially toxic reviews
-
-Ensured UI stability with graceful fallbacks when ML outputs are unavailable.
-
-🧠 Key Decisions Made (Important)
-
-Explicitly separated ingestion, ML inference, and UI layers to reflect production-grade architecture.
-
-Chose transformer-based sentiment over LLM APIs to maintain reproducibility, cost control, and ML credibility.
-
-Kept toxicity detection rule-based to preserve explainability and avoid noisy overfitting on limited data.
-
-Modeled sentiment and toxicity as independent signals, acknowledging that negative feedback is not always toxic.
-
-Avoided triggering ML inference from the UI, treating sentiment analysis as a batch pipeline rather than an interactive side effect.
-
-⚠️ Obstacles Faced
-
-Python import path issues for standalone ML scripts on Windows → resolved via explicit project-root resolution.
-
-Dependency isolation challenges (transformers, torch) → resolved through a dedicated virtual environment.
-
-Initial toxicity scores skewed toward zero due to polite review language → validated as a realistic signal rather than a modeling error.
-
-Current System State (End of Day 2)
-
-✅ All ingested reviews are enriched with sentiment and toxicity scores.
-
-✅ ML outputs are persisted in `mentions_ml` with full idempotency guarantees.
-
-✅ Streamlit UI surfaces both raw feedback and ML-derived signals without tight coupling.
-
-✅ System is now ML-ready for clustering, embeddings, and anomaly detection.
-
-Next Milestone — Day 3
-
-Semantic embeddings, review clustering, and theme extraction to identify emerging issues across brands.
+This project is intentionally **ML-first**, not UI-first.
+The goal is correctness, explainability, and extensibility — polish comes later.

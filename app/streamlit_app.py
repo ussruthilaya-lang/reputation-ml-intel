@@ -15,7 +15,7 @@ if ROOT not in sys.path:
 # ------------------------------------------------
 # ENV + DB
 # ------------------------------------------------
-load_dotenv()
+load_dotenv(os.path.join(ROOT, ".env"))
 
 @st.cache_resource
 def get_db_connection():
@@ -44,6 +44,41 @@ GOOGLE_PLAY_APPS = {
     "Capital One": "com.konylabs.capitalone",
     "Wells Fargo": "com.wf.wellsfargomobile",
 }
+
+# ------------------------------------------------
+# CLUSTER HELPERS
+# ------------------------------------------------
+def fetch_clusters(conn, brand: str):
+    q = """
+    SELECT
+        rc.cluster_id,
+        COUNT(*) AS review_count,
+        AVG(ml.sentiment_score) AS avg_sentiment
+    FROM review_clusters rc
+    JOIN mentions_raw mr ON mr.raw_id = rc.raw_id
+    LEFT JOIN mentions_ml ml ON ml.raw_id = rc.raw_id
+    WHERE mr.brand = %s
+    GROUP BY rc.cluster_id
+    ORDER BY review_count DESC;
+    """
+    with conn.cursor() as cur:
+        cur.execute(q, (brand.lower(),))
+        return cur.fetchall()
+
+
+def fetch_cluster_examples(conn, brand: str, cluster_id: int, limit: int = 5):
+    q = """
+    SELECT mr.body
+    FROM review_clusters rc
+    JOIN mentions_raw mr ON mr.raw_id = rc.raw_id
+    WHERE mr.brand = %s
+      AND rc.cluster_id = %s
+    ORDER BY mr.created_utc DESC
+    LIMIT %s;
+    """
+    with conn.cursor() as cur:
+        cur.execute(q, (brand.lower(), cluster_id, limit))
+        return [r[0] for r in cur.fetchall()]
 
 # ------------------------------------------------
 # UI HEADER
@@ -152,3 +187,25 @@ if not neg_df.empty:
     st.dataframe(neg_df, use_container_width=True)
 else:
     st.caption("No negative reviews detected yet.")
+
+# ------------------------------------------------
+# THEMES & ISSUES (CLUSTERS)
+# ------------------------------------------------
+st.subheader("🧩 Themes & Issues")
+
+clusters = fetch_clusters(conn, brand)
+
+if not clusters:
+    st.caption("Not enough data to surface themes yet.")
+else:
+    for cluster_id, count, avg_sent in clusters:
+        header = f"Cluster {cluster_id} · {count} reviews"
+        if avg_sent is not None:
+            header += f" · avg sentiment {avg_sent:.2f}"
+
+        with st.expander(header):
+            examples = fetch_cluster_examples(conn, brand, cluster_id)
+            for ex in examples:
+                if ex:
+                    st.write("•", ex)
+# ------------------------------------------------
