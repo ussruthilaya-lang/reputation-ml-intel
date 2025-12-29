@@ -68,17 +68,20 @@ def fetch_clusters(conn, brand: str):
 
 def fetch_cluster_examples(conn, brand: str, cluster_id: int, limit: int = 5):
     q = """
-    SELECT mr.body
+    SELECT
+        mr.body,
+        ml.sentiment_score
     FROM review_clusters rc
     JOIN mentions_raw mr ON mr.raw_id = rc.raw_id
+    JOIN mentions_ml ml ON ml.raw_id = mr.raw_id
     WHERE mr.brand = %s
       AND rc.cluster_id = %s
-    ORDER BY mr.created_utc DESC
+    ORDER BY ml.sentiment_score ASC
     LIMIT %s;
     """
     with conn.cursor() as cur:
         cur.execute(q, (brand.lower(), cluster_id, limit))
-        return [r[0] for r in cur.fetchall()]
+        return cur.fetchall()
 
 # ------------------------------------------------
 # UI HEADER
@@ -201,11 +204,21 @@ else:
     for cluster_id, count, avg_sent in clusters:
         header = f"Cluster {cluster_id} · {count} reviews"
         if avg_sent is not None:
-            header += f" · avg sentiment {avg_sent:.2f}"
+            if avg_sent < -0.3:
+                sev = "🔴 Negative"
+            elif avg_sent < 0.2:
+                sev = "🟠 Mixed"
+            else:
+                sev = "🟢 Positive"
+
+            header += f" · Avg. Sentiment: {avg_sent:.2f} · ({sev})"
 
         with st.expander(header):
             examples = fetch_cluster_examples(conn, brand, cluster_id)
-            for ex in examples:
-                if ex:
-                    st.write("•", ex)
+            for body, sent in examples:
+                if body:
+                    st.write(f"• {body}")
+                    st.caption(f"sentiment: {float(sent):.2f}")
+                else:
+                    st.write("• _[no content]_")
 # ------------------------------------------------
