@@ -126,6 +126,21 @@ This separation is intentional and future-proof.
 * KMeans used as MVP baseline (Windows-safe)
 * Architecture supports HDBSCAN upgrade later (Docker/WSL)
 
+## How Insights Are Surfaced
+
+Clustering output is transformed into product-facing signals through lightweight aggregation and evidence-first presentation.
+
+For each brand, reviews are grouped into semantic clusters and surfaced as:
+
+* cluster size (number of reviews)
+* average sentiment (severity cue)
+* escalation presence
+* representative user quotes
+
+Clusters are ordered by **review volume (impact)**, while sentiment severity and quotes provide context *within* each cluster.
+
+No summaries or trend logic are applied at this stage — the UI intentionally surfaces raw evidence to preserve explainability.
+
 ---
 
 ## How to Run the Project
@@ -163,11 +178,12 @@ All scripts are **idempotent** — safe to re-run at any time.
 * ✅ Live review ingestion
 * ✅ Sentiment & toxicity enrichment
 * ✅ Semantic embeddings
-* ✅ Review clustering into themes
-* ✅ Stable Streamlit UI with graceful fallbacks
+* ✅ Review clustering into semantic themes
+* ✅ Cluster-level aggregation (size, sentiment, escalation)
+* ✅ Interpretable “Themes & Issues” view with supporting user quotes
+* ✅ Stable Streamlit UI with graceful empty states
 
-This is a **working ML system**, not a prototype.
-
+This is a **working ML system** that surfaces actionable product signals — not a prototype dashboard.
 ---
 
 ## Planned Extensions
