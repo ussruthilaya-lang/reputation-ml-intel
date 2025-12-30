@@ -141,6 +141,11 @@ Clusters are ordered by **review volume (impact)**, while sentiment severity and
 
 No summaries or trend logic are applied at this stage — the UI intentionally surfaces raw evidence to preserve explainability.
 
+### Cluster Insights (Offline LLM)
+
+Cluster-level summaries are generated offline using an instruction-tuned open-source LLM and persisted as derived intelligence.  
+The application does not require LLM access at runtime.
+
 ---
 
 ## How to Run the Project

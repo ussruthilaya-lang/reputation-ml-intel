@@ -30,7 +30,7 @@ def get_db_connection():
 conn = get_db_connection()
 
 # ------------------------------------------------
-# IMPORT INGESTION
+# INGESTION IMPORTS
 # ------------------------------------------------
 from ingestion.load_to_db import insert_mentions
 from ingestion.reviews.google_play import fetch_google_play_reviews
@@ -46,7 +46,7 @@ GOOGLE_PLAY_APPS = {
 }
 
 # ------------------------------------------------
-# CLUSTER HELPERS
+# CLUSTER HELPERS (DAY 4)
 # ------------------------------------------------
 def fetch_clusters(conn, brand: str):
     q = """
@@ -80,8 +80,39 @@ def fetch_cluster_examples(conn, brand: str, cluster_id: int, limit: int = 5):
     LIMIT %s;
     """
     with conn.cursor() as cur:
-        cur.execute(q, (brand.lower(), cluster_id, limit))
+        cur.execute((q), (brand.lower(), cluster_id, limit))
         return cur.fetchall()
+
+# ------------------------------------------------
+# CLUSTER INSIGHTS (DAY 5)
+# ------------------------------------------------
+def fetch_emerging_issues(conn, brand: str):
+    """
+    Pulls latest materialized cluster insights.
+    """
+    q = """
+    SELECT
+        cluster_id,
+        primary_issue,
+        summary,
+        trend_label,
+        user_impact,
+        count_last_7d,
+        count_prev_7d,
+        delta_count
+    FROM cluster_insights
+    WHERE brand = %s
+      AND generated_at = (
+        SELECT MAX(generated_at)
+        FROM cluster_insights
+        WHERE brand = %s
+      )
+    ORDER BY
+        (trend_label = 'growing') DESC,
+        (user_impact = 'high') DESC,
+        delta_count DESC;
+    """
+    return pd.read_sql(q, conn, params=(brand.lower(), brand.lower()))
 
 # ------------------------------------------------
 # UI HEADER
@@ -114,7 +145,7 @@ if st.button("Fetch latest Google Play reviews"):
         st.success(f"Inserted {len(rows)} new reviews.")
 
 # ------------------------------------------------
-# RECENT REVIEWS (RAW)
+# RECENT REVIEWS
 # ------------------------------------------------
 st.subheader("Recent Reviews")
 
@@ -192,7 +223,7 @@ else:
     st.caption("No negative reviews detected yet.")
 
 # ------------------------------------------------
-# THEMES & ISSUES (CLUSTERS)
+# THEMES & ISSUES (DAY 4)
 # ------------------------------------------------
 st.subheader("🧩 Themes & Issues")
 
@@ -203,6 +234,7 @@ if not clusters:
 else:
     for cluster_id, count, avg_sent in clusters:
         header = f"Cluster {cluster_id} · {count} reviews"
+
         if avg_sent is not None:
             if avg_sent < -0.3:
                 sev = "🔴 Negative"
@@ -210,15 +242,39 @@ else:
                 sev = "🟠 Mixed"
             else:
                 sev = "🟢 Positive"
-
-            header += f" · Avg. Sentiment: {avg_sent:.2f} · ({sev})"
+            header += f" · Avg Sentiment {avg_sent:.2f} ({sev})"
 
         with st.expander(header):
             examples = fetch_cluster_examples(conn, brand, cluster_id)
             for body, sent in examples:
-                if body:
-                    st.write(f"• {body}")
-                    st.caption(f"sentiment: {float(sent):.2f}")
-                else:
-                    st.write("• _[no content]_")
+                st.write(f"• {body}")
+                st.caption(f"sentiment: {float(sent):.2f}")
+
 # ------------------------------------------------
+# 🚨 EMERGING & HIGH-RISK ISSUES (DAY 5)
+# ------------------------------------------------
+st.subheader("🚨 Emerging & High-Risk Issues")
+
+insights_df = fetch_emerging_issues(conn, brand)
+
+if insights_df.empty:
+    st.caption("No cluster insights generated yet.")
+else:
+    for _, row in insights_df.iterrows():
+        badge = "🟢"
+        if row["user_impact"] == "high":
+            badge = "🔴"
+        elif row["user_impact"] == "medium":
+            badge = "🟠"
+
+        title = f"{badge} {row['primary_issue']} · Cluster {row['cluster_id']}"
+
+        with st.expander(title):
+            st.write(row["summary"])
+
+            st.caption(
+                f"Trend: **{row['trend_label']}** · "
+                f"Last 7d: {row['count_last_7d']} · "
+                f"Prev 7d: {row['count_prev_7d']} · "
+                f"Δ: {row['delta_count']}"
+            )
